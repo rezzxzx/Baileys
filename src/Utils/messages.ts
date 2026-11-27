@@ -679,6 +679,48 @@ export const generateWAMessageContent = async (
 	return WAProto.Message.create(m)
 }
 
+/**
+ * vlyzer-fork: inject a mention of every given JID into a generated message.
+ * Applies to the first content node that carries a contextInfo
+ * (text, image, video, document, audio, sticker, contact, location...).
+ * Returns true when the mentions were applied.
+ */
+export const applyMentionAllToMessage = (message: proto.IMessage, jids: string[]): boolean => {
+	const MENTIONABLE_KEYS = [
+		'extendedTextMessage',
+		'imageMessage',
+		'videoMessage',
+		'documentMessage',
+		'audioMessage',
+		'stickerMessage',
+		'contactMessage',
+		'contactsArrayMessage',
+		'locationMessage',
+		'liveLocationMessage'
+	] as const
+
+	const uniqueJids = [...new Set(jids)]
+	if (!uniqueJids.length) {
+		return false
+	}
+
+	for (const key of MENTIONABLE_KEYS) {
+		const content = (message as { [_: string]: unknown })[key] as
+			| { contextInfo?: proto.IContextInfo }
+			| undefined
+		if (content && typeof content === 'object') {
+			const existing = content.contextInfo?.mentionedJid || []
+			content.contextInfo = {
+				...(content.contextInfo || {}),
+				mentionedJid: [...new Set([...existing, ...uniqueJids])]
+			}
+			return true
+		}
+	}
+
+	return false
+}
+
 export const generateWAMessageFromContent = (
 	jid: string,
 	message: WAMessageContent,

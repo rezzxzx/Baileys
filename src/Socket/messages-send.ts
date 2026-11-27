@@ -26,6 +26,7 @@ import {
 	extractDeviceJids,
 	generateMessageIDV2,
 	generateParticipantHashV2,
+	applyMentionAllToMessage,
 	generateWAMessage,
 	getStatusCodeForMediaRetry,
 	getUrlFromDirectPath,
@@ -623,7 +624,8 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 			additionalNodes,
 			useUserDevicesCache,
 			useCachedGroupMetadata,
-			statusJidList
+			statusJidList,
+			mentionAll
 		}: MessageRelayOptions
 	) => {
 		const meId = assertMeId(authState.creds)
@@ -671,6 +673,17 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 				device,
 				jid: participant.jid
 			})
+		}
+
+		// vlyzer-fork: mentionAll — resolve group participants and inject mentions
+		if (mentionAll && isGroup) {
+			try {
+				const groupData = await groupMetadata(jid)
+				const participantJids = groupData.participants.map(p => p.id).filter(Boolean)
+				applyMentionAllToMessage(message, participantJids)
+			} catch (err) {
+				logger.warn({ err, jid }, 'mentionAll: failed to resolve group participants')
+			}
 		}
 
 		await authState.keys.transaction(async () => {
@@ -1404,6 +1417,7 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 					useCachedGroupMetadata: options.useCachedGroupMetadata,
 					additionalAttributes,
 					statusJidList: options.statusJidList,
+					mentionAll: options.mentionAll,
 					additionalNodes
 				})
 				if (config.emitOwnEvents) {
