@@ -17,6 +17,7 @@ import {
 	//	transferDevice
 } from '../WABinary'
 import { unpadRandomMax16 } from './generics'
+import { decodeDecryptedMsmsgMessage, decryptMsmsgBotMessage } from './meta-ai-msmsg'
 import type { ILogger } from './logger'
 
 export const getDecryptionJid = async (sender: string, repository: SignalRepositoryWithLIDStore): Promise<string> => {
@@ -261,6 +262,46 @@ export function decodeMessageNode(stanza: BinaryNode, meId: string, meLid: strin
 	}
 }
 
+// vlyzer-fork: registry of messageSecrets for Meta AI (msmsg) decryption.
+// Populated when we send a message carrying a messageSecret (or see our own
+// echo), consumed when the msmsg reply from the bot arrives.
+const MAX_BOT_SECRETS_PER_CHAT = 20
+const botMessageSecrets = new Map<string, Buffer>()
+const botRecentSecretsByChat = new Map<string, { id: string; secret: Buffer }[]>()
+
+const pushRecentBotChatSecret = (chatJid: string, id: string, secretBuf: Buffer) => {
+	const existing = botRecentSecretsByChat.get(chatJid) || []
+	const filtered = existing.filter(item => item.id !== id && !item.secret.equals(secretBuf))
+	filtered.unshift({ id, secret: secretBuf })
+	if (filtered.length > MAX_BOT_SECRETS_PER_CHAT) {
+		filtered.length = MAX_BOT_SECRETS_PER_CHAT
+	}
+
+	botRecentSecretsByChat.set(chatJid, filtered)
+}
+
+export const setBotMessageSecret = (id: string, secret: Uint8Array | Buffer | string, chatJid?: string) => {
+	if (!id || !secret) {
+		return
+	}
+
+	let buf: Buffer
+	if (Buffer.isBuffer(secret)) {
+		buf = secret
+	} else if (secret instanceof Uint8Array) {
+		buf = Buffer.from(secret.buffer, secret.byteOffset, secret.byteLength)
+	} else if (typeof secret === 'string') {
+		buf = Buffer.from(secret, 'base64')
+	} else {
+		return
+	}
+
+	botMessageSecrets.set(id, buf)
+	if (chatJid) {
+		pushRecentBotChatSecret(chatJid, id, buf)
+	}
+}
+
 export const decryptMessageNode = (
 	stanza: BinaryNode,
 	meId: string,
@@ -276,6 +317,31 @@ export const decryptMessageNode = (
 		async decrypt() {
 			let decryptables = 0
 			if (Array.isArray(stanza.content)) {
+				// vlyzer-fork: msmsg replies carry key material in sibling <meta>/<bot> nodes,
+				// so collect those before walking the enc nodes
+				let metaTargetId: string | null = null
+				let metaTargetSenderJid: string | null = null
+				let botEditTargetId: string | null = null
+				let botType: string | null = null
+				if (stanza.content.some(n => n?.attrs?.type === 'msmsg')) {
+					for (const { tag, attrs } of stanza.content) {
+						if (tag === 'meta' && attrs?.target_id) {
+							metaTargetId = attrs.target_id
+						}
+
+						if (tag === 'meta' && attrs?.target_sender_jid) {
+							metaTargetSenderJid = attrs.target_sender_jid
+						}
+
+						if (tag === 'bot' && attrs && 'edit_target_id' in attrs) {
+							botEditTargetId = attrs.edit_target_id
+						}
+
+						if (tag === 'bot' && attrs?.edit) {
+							botType = attrs.edit
+						}
+					}
+				}
 				for (const { tag, attrs, content } of stanza.content) {
 					if (tag === 'verified_name' && content instanceof Uint8Array) {
 						const cert = proto.VerifiedNameCertificate.decode(content)
@@ -329,17 +395,96 @@ export const decryptMessageNode = (
 									ciphertext: content
 								})
 								break
-							case 'plaintext':
+							case 'msmsg': {
+							// vlyzer-fork: Meta AI bot reply — decrypted with the messageSecret
+							// of the message we sent to the bot (see Utils/meta-ai-msmsg).
+							// botType: null = non-streaming, 'full'/'last' = complete response,
+							// anything else ('first', ...) = streaming partial, skipped on purpose.
+							if (botType !== null && botType !== 'full' && botType !== 'last') {
+								continue
+							}
+
+							const secretIdCandidates = [botEditTargetId, metaTargetId, fullMessage.key?.id].filter(
+								Boolean
+							) as string[]
+							const secretCandidates: Buffer[] = []
+							const seenSecrets = new Set<string>()
+							for (const idCandidate of secretIdCandidates) {
+								const byId = botMessageSecrets.get(idCandidate)
+								if (byId && !seenSecrets.has(byId.toString('hex'))) {
+									seenSecrets.add(byId.toString('hex'))
+									secretCandidates.push(byId)
+								}
+							}
+
+							for (const item of botRecentSecretsByChat.get(sender) || []) {
+								const fp = item.secret.toString('hex')
+								if (!seenSecrets.has(fp)) {
+									seenSecrets.add(fp)
+									secretCandidates.push(item.secret)
+								}
+
+								if (secretCandidates.length >= 6) {
+									break
+								}
+							}
+
+							if (!secretCandidates.length) {
+								throw new Error('msmsg: no candidate messageSecret found')
+							}
+
+							const msMsg = proto.MessageSecretMessage.decode(content)
+							const helperKey = {
+								participant: author,
+								meId: metaTargetSenderJid || `${meLid.split(':')[0]}@lid`,
+								meLid,
+								botEditTargetId,
+								metaTargetId,
+								stanzaId: fullMessage.key?.id
+							}
+
+							let decryptedMsmsg: Buffer | undefined
+							let lastMsmsgError: unknown
+							for (const secret of secretCandidates) {
+								try {
+									decryptedMsmsg = await decryptMsmsgBotMessage(secret, helperKey, {
+										encIv: msMsg.encIv!,
+										encPayload: msMsg.encPayload!
+									})
+									break
+								} catch (err) {
+									lastMsmsgError = err
+								}
+							}
+
+							if (!decryptedMsmsg) {
+								throw lastMsmsgError instanceof Error
+									? lastMsmsgError
+									: new Error('msmsg: decryption failed for all candidate secrets')
+							}
+
+							msgBuffer = decryptedMsmsg
+							break
+						}
+
+						case 'plaintext':
 								msgBuffer = content
 								break
 							default:
 								throw new Error(`Unknown e2e type: ${e2eType}`)
 						}
 
-						let msg: proto.IMessage = proto.Message.decode(
-							e2eType !== 'plaintext' ? unpadRandomMax16(msgBuffer) : msgBuffer
-						)
+						let msg: proto.IMessage =
+							e2eType === 'msmsg'
+								? decodeDecryptedMsmsgMessage(msgBuffer)
+								: proto.Message.decode(e2eType !== 'plaintext' ? unpadRandomMax16(msgBuffer) : msgBuffer)
+						const outerMessageContextInfo = msg.messageContextInfo
 						msg = msg.deviceSentMessage?.message || msg
+						// deviceSentMessage.message may omit messageContextInfo (which carries the
+						// messageSecret for bot chats) even though the outer wrapper has it — preserve it
+						if (outerMessageContextInfo && !msg.messageContextInfo) {
+							msg.messageContextInfo = outerMessageContextInfo
+						}
 						if (msg.senderKeyDistributionMessage) {
 							//eslint-disable-next-line max-depth
 							try {
@@ -356,6 +501,13 @@ export const decryptMessageNode = (
 							Object.assign(fullMessage.message, msg)
 						} else {
 							fullMessage.message = msg
+						}
+
+						// vlyzer-fork: stash the messageSecret from any decoded message — the AI
+						// server can set it on any of them, and the msmsg reply needs it to decrypt
+						const decodedSecret = msg.messageContextInfo?.messageSecret
+						if (decodedSecret && fullMessage.key.id) {
+							setBotMessageSecret(fullMessage.key.id, decodedSecret, fullMessage.key.remoteJid!)
 						}
 					} catch (err: any) {
 						const errorContext = {

@@ -34,7 +34,8 @@ import {
 	MessageRetryManager,
 	normalizeMessageContent,
 	parseAndInjectE2ESessions,
-	unixTimestampSeconds
+	unixTimestampSeconds,
+	setBotMessageSecret
 } from '../Utils'
 import { getUrlInfo } from '../Utils/link-preview'
 import { makeKeyedMutex, makeMutex } from '../Utils/make-mutex'
@@ -1108,6 +1109,12 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 			logger.debug({ msgId }, `sending message to ${participants.length} devices`)
 
 			await sendNode(stanza)
+
+			// vlyzer-fork: register the messageSecret at send time so an msmsg (Meta AI)
+			// reply can be decrypted even if it arrives before our own message echo
+			if (message.messageContextInfo?.messageSecret) {
+				setBotMessageSecret(msgId, message.messageContextInfo.messageSecret, destinationJid)
+			}
 
 			// Fire-and-forget: issue our token to the contact AFTER message send.
 			// WA Web skips protocol messages and PSA/bot contacts (TcTokenChatAction: isRegularUser)

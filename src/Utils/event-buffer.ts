@@ -1,4 +1,5 @@
 import EventEmitter from 'events'
+import { makeListenerGuard } from './listener-guard'
 import type { proto } from '../../WAProto/index.js'
 import type {
 	BaileysEvent,
@@ -71,6 +72,10 @@ type BaileysBufferableEventEmitter = BaileysEventEmitter & {
  * making the data processing more efficient.
  */
 export const makeEventBuffer = (logger: ILogger): BaileysBufferableEventEmitter => {
+	// vlyzer-fork: crash guard — a throwing/rejecting listener is logged, never fatal
+	const listenerGuard = makeListenerGuard((err: unknown) =>
+		logger.error({ err }, 'event listener error (crash guard)')
+	)
 	const ev = new EventEmitter()
 	const historyCache = new Set<string>()
 
@@ -234,8 +239,14 @@ export const makeEventBuffer = (logger: ILogger): BaileysBufferableEventEmitter 
 				}
 			}
 		},
-		on: (...args) => ev.on(...args),
-		off: (...args) => ev.off(...args),
+		on: (...args) => {
+			const [event, listener] = args as unknown as [string, Function]
+			return ev.on(event as never, listenerGuard.wrap(listener) as never)
+		},
+		off: (...args) => {
+			const [event, listener] = args as unknown as [string, Function]
+			return ev.off(event as never, listenerGuard.unwrap(listener) as never)
+		},
 		removeAllListeners: (...args) => ev.removeAllListeners(...args),
 		destroy() {
 			// Clear buffer timeout

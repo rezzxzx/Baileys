@@ -59,3 +59,31 @@ custom pairing codes, album messages.
 
 Published name in `package.json`: `@vlyzer/baileys`, version `7.0.0-vlyzer.3`.
 The Vlyzer bot consumes this fork as a local dependency.
+
+## Batch 4 — Meta AI msmsg decryption + listener crash guard (7.0.0-vlyzer.4)
+
+The last two Zireku gaps, implemented from the protocol after studying how
+msmsg works (the algorithm was verified with a full offline round-trip:
+simulate the server encrypting a bot reply, then decrypt it back):
+
+- **Meta AI `msmsg` decryption** (`src/Utils/meta-ai-msmsg.ts`): replies from
+  Meta AI arrive as `<enc type="msmsg">` carrying a `MessageSecretMessage`
+  (encIv + encPayload). The key is a two-pass HKDF over the `messageSecret`
+  of the message we sent to the bot: k1 = HKDF(secret, info "Bot Message"),
+  k2 = HKDF(k1, info msgId‖targetJid‖botJid), AES-256-GCM with
+  AAD = msgId‖0x00‖botJid. msgId/target-JID candidates (edit target, stanza
+  id, meta target; PN and LID forms) are tried in order.
+  - Secret registry in `decode-wa-message.ts` (`setBotMessageSecret`):
+    populated at send time (`messages-send.ts`), from any decoded message's
+    messageContextInfo, and recovered from the message store on receive
+    (`messages-recv.ts`, via `<meta target_id>`) so restarts don't lose it.
+    Upstream's "ignore msmsg + NACK" placeholder is replaced by real handling;
+    streaming partials (`<bot edit="first">`) are skipped, complete responses
+    (`full`/`last`) are decrypted and delivered as normal messages.
+  - Offline tests: PN-target decrypt, LID-target decrypt, base64 secret,
+    wrong secret correctly rejected.
+- **Listener crash guard** (`src/Utils/listener-guard.ts`): wraps listeners
+  registered through the event buffer (`ev.on`/`ev.off`) so a throwing or
+  rejecting async listener is logged instead of becoming an unhandled
+  rejection that kills the process. Wrappers are memoized per listener so
+  `off()` still finds the registration.

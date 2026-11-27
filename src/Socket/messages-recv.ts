@@ -51,7 +51,8 @@ import {
 	toNumber,
 	unixTimestampSeconds,
 	xmppPreKey,
-	xmppSignedPreKey
+	xmppSignedPreKey,
+	setBotMessageSecret
 } from '../Utils'
 import { makeMutex } from '../Utils/make-mutex'
 import { makeOfflineNodeProcessor, type MessageType } from '../Utils/offline-node-processor'
@@ -1584,11 +1585,22 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 
 	const handleMessage = async (node: BinaryNode) => {
 		const encNode = getBinaryNodeChild(node, 'enc')
-		// TODO: temporary fix for crashes and issues resulting of failed msmsg decryption
+		// vlyzer-fork: msmsg (Meta AI bot reply) needs the messageSecret of the message we
+		// sent to the bot. The in-memory registry is lost on restart, so recover the secret
+		// from the message store via the stanza's <meta target_id> before decrypting.
 		if (encNode?.attrs.type === 'msmsg') {
-			logger.debug({ key: node.attrs.key }, 'ignored msmsg')
-			await sendMessageAck(node, NACK_REASONS.MissingMessageSecret)
-			return
+			const targetId = getBinaryNodeChild(node, 'meta')?.attrs?.target_id
+			if (targetId) {
+				try {
+					const targetMsg = await getMessage({ remoteJid: node.attrs.from, id: targetId, fromMe: true })
+					const secret = targetMsg?.messageContextInfo?.messageSecret
+					if (secret) {
+						setBotMessageSecret(targetId, secret, node.attrs.from)
+					}
+				} catch (err) {
+					logger.debug({ err, targetId }, 'failed to retrieve message secret for msmsg')
+				}
+			}
 		}
 
 		let acked = false
