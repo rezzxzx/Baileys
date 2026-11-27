@@ -143,6 +143,8 @@ export const prepareWAMessageMedia = async (
 		media: (message as any)[mediaType]
 	}
 	delete (uploadData as any)[mediaType]
+	// vlyzer-fork: the sound-sticker audio track is prepared separately, not part of the sticker upload data
+	delete (uploadData as any).stickerAudio
 	// check if cacheable + generate cache key
 	const cacheableKey =
 		typeof uploadData.media === 'object' &&
@@ -709,6 +711,16 @@ export const generateWAMessageContent = async (
 		}
 	} else {
 		m = await prepareWAMessageMedia(message, options)
+	}
+
+	// vlyzer-fork: sound sticker — upload the audio track as regular audio media
+	// and embed it in the sticker message (StickerMessage.audioMessage, field 26)
+	const stickerAudio = (message as { stickerAudio?: WAMediaUpload }).stickerAudio
+	if (stickerAudio && m.stickerMessage) {
+		const { audioMessage } = await prepareWAMessageMedia({ audio: stickerAudio }, options)
+		if (audioMessage) {
+			m.stickerMessage.audioMessage = audioMessage
+		}
 	}
 
 	if (hasOptionalProperty(message, 'viewOnce') && !!message.viewOnce) {

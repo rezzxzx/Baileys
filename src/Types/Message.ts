@@ -259,6 +259,9 @@ export type AnyMediaMessageContent = (
 	| ({
 			sticker: WAMediaUpload
 			isAnimated?: boolean
+			/** vlyzer-fork: audio track attached to the sticker (WhatsApp sound stickers);
+			 * the audio is uploaded as regular audio media and embedded in the sticker message */
+			stickerAudio?: WAMediaUpload
 	  } & WithDimensions)
 	| ({
 			document: WAMediaUpload

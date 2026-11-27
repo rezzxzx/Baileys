@@ -2,7 +2,7 @@
 
 Vlyzer's own fork of [WhiskeySockets/Baileys](https://github.com/WhiskeySockets/Baileys) — the WhatsApp Web API library, extended with the features the Vlyzer bot actually needs. This is **not** the upstream package: everything below the line is added or fixed on top of upstream master (post-`7.0.0-rc14`).
 
-Current version: **7.0.0-vlyzer.4** · WA Web version: **2.3000.1056179073** · License: MIT
+Current version: **7.0.0-vlyzer.5** · WA Web version: **2.3000.1056179073** · License: MIT
 
 ## Install
 
@@ -51,6 +51,7 @@ Everything from upstream Baileys works exactly as documented at [baileys.wiki](h
   ```
 - **Payments** — `requestPayment` (amount in major units, e.g. `25000` = Rp25.000) and `paymentInvite` (FBPAY / NOVI / UPI).
 - **Sticker packs** — send a whole pack with `{ stickerPack: { name, publisher, stickers: [...] } }`.
+- **Sound stickers** — attach an audio track to a sticker with `{ sticker, stickerAudio }` (embedded `StickerMessage.audioMessage`).
 - **`ai` flag** — attach Meta AI persona metadata to a message: `sendMessage(jid, { text: 'hi' }, { ai: true })`.
 - **Albums** — supported upstream and verified here (`{ album: {...} }` + per-item `albumParentKey`).
 

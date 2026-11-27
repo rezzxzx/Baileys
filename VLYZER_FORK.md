@@ -87,3 +87,30 @@ simulate the server encrypting a bot reply, then decrypt it back):
   rejecting async listener is logged instead of becoming an unhandled
   rejection that kills the process. Wrappers are memoized per listener so
   `off()` still finds the registration.
+
+## Batch 5 — Sound stickers (7.0.0-vlyzer.5)
+
+WhatsApp's sound stickers (animated sticker with an attached audio track)
+turned out to already exist in the wire protocol as an embedded message:
+`StickerMessage.audioMessage` — a full `AudioMessage` in the oneof `audio`.
+The field was found in a newer proto extraction (field **26**, tag 210);
+upstream's proto does not have it yet. Note the top-level
+`Message.audioStickerMessage` in newer protos is only a `FutureProofMessage`
+placeholder, not the usable format.
+
+- **WAProto** (`WAProto/index.js` + `index.d.ts`): `audioMessage` added to
+  `StickerMessage` by hand (encode/decode/fromObject/toObject + the `audio`
+  oneof accessor), matching the generated-code patterns of the neighbouring
+  fields. This is a deliberate, documented deviation from "never hand-edit
+  WAProto": the field cannot be regenerated without a newer proto extraction,
+  and the edit is fully covered by round-trip tests.
+- **Sending**: pass `stickerAudio` next to `sticker` in the message content.
+  The audio is uploaded as regular audio media via `prepareWAMessageMedia`
+  and embedded into the generated `stickerMessage`
+  (`src/Utils/messages.ts`, type in `src/Types/Message.ts`).
+- Offline tests: proto encode/decode round-trip keeps the audio (oneof
+  discriminator `audio: "audioMessage"`), generation with a mocked upload
+  attaches a fully populated `audioMessage` (media key, url, duration),
+  plain stickers are unaffected.
+- Receiving works through the same proto change: incoming sound stickers
+  decode with their `audioMessage` intact instead of dropping the field.
