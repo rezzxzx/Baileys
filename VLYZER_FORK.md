@@ -18,7 +18,26 @@ WhiskeySockets. Base: upstream master post-7.0.0-rc14.
 Album messages (`{ album: {...} }` + `albumParentKey`) are already supported by
 upstream and are used as-is.
 
+## Changes on branch `vlyzer-fork` (batch 2)
+
+3. **New message content types** in `generateWAMessageContent`
+   (`src/Utils/messages.ts`, typed in `src/Types/Message.ts`):
+   - `{ interactive: { title?, subtitle?, text, footer?, buttons } }` — native-flow
+     interactive message; button params are JSON-encoded for you.
+   - `{ richResponse: { text?, codeBlocks?, tables? } }` — AI rich-response message
+     with text / code / table submessages.
+   - `{ requestPayment: { currency, amount, note?, expiryTimestamp?, requestFrom? } }`
+     — payment request; `amount` is in major units, converted to `amount1000`.
+4. **`makeInMemoryStore`** (`src/Utils/make-in-memory-store.ts`) — the classic
+   store API upstream removed, reimplemented dependency-free on Maps:
+   `bind(ev)`, `loadMessage`, `loadMessages`, chats/contacts/messages/groupMetadata,
+   JSON `toJSON`/`fromJSON`/`readFromFile`/`writeToFile`.
+
+All batch 1+2 features are covered by offline generation/store tests
+(message generation + protobuf round-trip). Live rendering of the new
+message types still needs an on-device check.
+
 ## Package
 
-Published name in `package.json`: `@vlyzer/baileys`, version `7.0.0-vlyzer.1`.
+Published name in `package.json`: `@vlyzer/baileys`, version `7.0.0-vlyzer.2`.
 The Vlyzer bot consumes this fork as a local dependency.

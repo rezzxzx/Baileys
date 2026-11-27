@@ -586,6 +586,68 @@ export const generateWAMessageContent = async (
 				m.pollCreationMessage = pollCreationMessage
 			}
 		}
+	} else if (hasNonNullishProperty(message, 'interactive')) {
+		// vlyzer-fork: interactive (native flow) message
+		const interactive = message.interactive
+		m.interactiveMessage = {
+			header:
+				interactive.title || interactive.subtitle
+					? { title: interactive.title, subtitle: interactive.subtitle, hasMediaAttachment: false }
+					: undefined,
+			body: { text: interactive.text },
+			footer: interactive.footer ? { text: interactive.footer } : undefined,
+			nativeFlowMessage: interactive.buttons?.length
+				? {
+						buttons: interactive.buttons.map(b => ({
+							name: b.name,
+							buttonParamsJson: JSON.stringify(b.params ?? {})
+						})),
+						messageVersion: 1
+					}
+				: undefined
+		}
+	} else if (hasNonNullishProperty(message, 'richResponse')) {
+		// vlyzer-fork: AI rich-response message (text / code / table submessages)
+		const rr = message.richResponse
+		const submessages: proto.IAIRichResponseSubMessage[] = []
+		if (rr.text) {
+			submessages.push({
+				messageType: proto.AIRichResponseSubMessageType.AI_RICH_RESPONSE_TEXT,
+				messageText: rr.text
+			})
+		}
+
+		for (const cb of rr.codeBlocks || []) {
+			submessages.push({
+				messageType: proto.AIRichResponseSubMessageType.AI_RICH_RESPONSE_CODE,
+				codeMetadata: { codeBlocks: [{ codeContent: cb.code }] }
+			})
+		}
+
+		for (const t of rr.tables || []) {
+			submessages.push({
+				messageType: proto.AIRichResponseSubMessageType.AI_RICH_RESPONSE_TABLE,
+				tableMetadata: {
+					title: t.title,
+					rows: t.rows.map((items, i) => ({ items, isHeading: !!t.headingFirstRow && i === 0 }))
+				}
+			})
+		}
+
+		m.richResponseMessage = {
+			messageType: proto.AIRichResponseMessageType.AI_RICH_RESPONSE_TYPE_STANDARD,
+			submessages
+		}
+	} else if (hasNonNullishProperty(message, 'requestPayment')) {
+		// vlyzer-fork: payment request message
+		const rp = message.requestPayment
+		m.requestPaymentMessage = {
+			currencyCodeIso4217: rp.currency,
+			amount1000: Math.round(rp.amount * 1000),
+			requestFrom: rp.requestFrom,
+			expiryTimestamp: rp.expiryTimestamp,
+			noteMessage: rp.note ? { extendedTextMessage: { text: rp.note } } : undefined
+		}
 	} else if (hasNonNullishProperty(message, 'album')) {
 		m.albumMessage = {
 			expectedImageCount: message.album.expectedImageCount,

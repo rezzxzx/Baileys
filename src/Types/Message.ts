@@ -156,6 +156,40 @@ export type EventMessageOptions = {
 	messageSecret?: Uint8Array<ArrayBufferLike>
 }
 
+/** vlyzer-fork: options for an interactive (native flow) message */
+export type InteractiveMessageOptions = {
+	/** header title */
+	title?: string
+	/** header subtitle */
+	subtitle?: string
+	/** main body text */
+	text: string
+	/** footer text */
+	footer?: string
+	/** native flow buttons; params are JSON-encoded into buttonParamsJson (e.g. quick_reply, cta_url, single_select) */
+	buttons?: { name: string; params: Record<string, unknown> }[]
+}
+
+/** vlyzer-fork: options for an AI rich-response message (text, code blocks, tables) */
+export type RichResponseOptions = {
+	text?: string
+	codeBlocks?: { code: string }[]
+	tables?: { title?: string; rows: string[][]; headingFirstRow?: boolean }[]
+}
+
+/** vlyzer-fork: options for a payment request message */
+export type RequestPaymentOptions = {
+	/** ISO 4217 currency code, e.g. 'IDR' */
+	currency: string
+	/** amount in major units (e.g. rupiah); stored on the wire as amount1000 */
+	amount: number
+	/** note text shown with the request */
+	note?: string
+	/** expiry as unix seconds */
+	expiryTimestamp?: number
+	requestFrom?: string
+}
+
 export type AlbumMessageOptions = {
 	/** Number of images expected in the album */
 	expectedImageCount?: number
@@ -247,6 +281,16 @@ export type AnyRegularMessageContent = (
 			album: AlbumMessageOptions
 	  } & Contextable &
 			Mentionable)
+	| ({
+			interactive: InteractiveMessageOptions
+	  } & Contextable &
+			Mentionable)
+	| {
+			richResponse: RichResponseOptions
+	  }
+	| {
+			requestPayment: RequestPaymentOptions
+	  }
 	| {
 			contacts: {
 				displayName?: string
