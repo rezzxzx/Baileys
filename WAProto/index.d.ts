@@ -9008,6 +9008,8 @@ export namespace proto {
             isLottie?: (boolean|null);
             accessibilityLabel?: (string|null);
             mediaKeyDomain?: (proto.Message.MediaKeyDomain|null);
+            audioMessage?: (proto.Message.IAudioMessage|null);
+            audio?: "audioMessage";
         }
 
         class StickerMessage implements IStickerMessage {
@@ -9033,6 +9035,8 @@ export namespace proto {
             public isLottie?: (boolean|null);
             public accessibilityLabel?: (string|null);
             public mediaKeyDomain?: (proto.Message.MediaKeyDomain|null);
+            public audioMessage?: (proto.Message.IAudioMessage|null);
+            public audio?: "audioMessage";
             public static create(properties?: proto.Message.IStickerMessage): proto.Message.StickerMessage;
             public static encode(m: proto.Message.IStickerMessage, w?: $protobuf.Writer): $protobuf.Writer;
             public static decode(r: ($protobuf.Reader|Uint8Array), l?: number): proto.Message.StickerMessage;
