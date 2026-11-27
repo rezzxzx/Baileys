@@ -37,7 +37,25 @@ All batch 1+2 features are covered by offline generation/store tests
 (message generation + protobuf round-trip). Live rendering of the new
 message types still needs an on-device check.
 
+## Changes on branch `vlyzer-fork` (batch 3)
+
+5. **`{ stickerPack: { name, publisher, packId?, stickers } }`** — sticker pack
+   message; the first sticker goes through the normal sticker media pipeline and
+   provides the pack-level media payload.
+6. **`{ paymentInvite: { serviceType, expiryTimestamp? } }`** — payment invite.
+7. **`ai` send option** — `sendMessage(jid, content, { ai: true, aiPersonaId? })`
+   attaches `botMetadata` to the message context info, the same place Meta AI
+   messages carry theirs.
+8. **Newsletter quoting enabled** — upstream skips quoted contextInfo for
+   newsletter JIDs entirely; the fork attaches stanzaId/quotedMessage there too.
+
+Already present upstream (inherited by this fork, no change needed):
+selective history sync (`shouldSyncHistoryMessage`, `syncFullHistory`),
+LID <-> phone-number mapping (`getPNForLID` / `getLIDForPN`), USync username
+and bot-profile protocols, MEX GraphQL queries (`executeWMexQuery`),
+custom pairing codes, album messages.
+
 ## Package
 
-Published name in `package.json`: `@vlyzer/baileys`, version `7.0.0-vlyzer.2`.
+Published name in `package.json`: `@vlyzer/baileys`, version `7.0.0-vlyzer.3`.
 The Vlyzer bot consumes this fork as a local dependency.

@@ -586,6 +586,44 @@ export const generateWAMessageContent = async (
 				m.pollCreationMessage = pollCreationMessage
 			}
 		}
+	} else if (hasNonNullishProperty(message, 'stickerPack')) {
+		// vlyzer-fork: sticker pack message. The first sticker is uploaded through the
+		// normal sticker media pipeline and also provides the pack-level media payload.
+		const pack = message.stickerPack
+		if (!pack.stickers?.length) {
+			throw new Boom('stickerPack requires at least one sticker', { statusCode: 400 })
+		}
+
+		const prepared = await prepareWAMessageMedia({ sticker: pack.stickers[0]!.media }, options)
+		const sm = prepared.stickerMessage!
+		m.stickerPackMessage = {
+			stickerPackId: pack.packId || randomBytes(16).toString('hex'),
+			name: pack.name,
+			publisher: pack.publisher,
+			caption: pack.caption,
+			stickers: pack.stickers.map((st, i) => ({
+				fileName: st.fileName || `sticker_${i}.webp`,
+				isAnimated: !!st.isAnimated,
+				emojis: st.emojis || [],
+				accessibilityLabel: st.accessibilityLabel,
+				isLottie: false,
+				mimetype: 'image/webp'
+			})),
+			fileLength: sm.fileLength,
+			fileSha256: sm.fileSha256,
+			fileEncSha256: sm.fileEncSha256,
+			mediaKey: sm.mediaKey,
+			directPath: sm.directPath,
+			mediaKeyTimestamp: sm.mediaKeyTimestamp,
+			trayIconFileName: pack.stickers[0]!.fileName || 'sticker_0.webp'
+		}
+	} else if (hasNonNullishProperty(message, 'paymentInvite')) {
+		// vlyzer-fork: payment invite message
+		const pi = message.paymentInvite
+		m.paymentInviteMessage = {
+			serviceType: proto.Message.PaymentInviteMessage.ServiceType[pi.serviceType],
+			expiryTimestamp: pi.expiryTimestamp
+		}
 	} else if (hasNonNullishProperty(message, 'interactive')) {
 		// vlyzer-fork: interactive (native flow) message
 		const interactive = message.interactive
@@ -799,7 +837,9 @@ export const generateWAMessageFromContent = (
 	const timestamp = unixTimestampSeconds(options.timestamp)
 	const { quoted, userJid } = options
 
-	if (quoted && !isJidNewsletter(jid)) {
+	// vlyzer-fork: quoting is also enabled for newsletters (upstream skips it there);
+	// channel replies carry stanzaId/quotedMessage in contextInfo like other chats
+	if (quoted) {
 		const participant = quoted.key.fromMe
 			? userJid // TODO: Add support for LIDs
 			: quoted.participant || quoted.key.participant || quoted.key.remoteJid
@@ -847,6 +887,19 @@ export const generateWAMessageFromContent = (
 			...((innerMessage[key] as any).contextInfo || {}),
 			expiration: options.ephemeralExpiration || WA_DEFAULT_EPHEMERAL
 			//ephemeralSettingTimestamp: options.ephemeralOptions.eph_setting_ts?.toString()
+		}
+	}
+
+	if (options?.ai) {
+		// vlyzer-fork: ai flag — attach bot metadata to the message context info,
+		// the same place Meta AI messages carry theirs
+		const inner = innerMessage as proto.IMessage
+		inner.messageContextInfo = {
+			...(inner.messageContextInfo || {}),
+			botMetadata: {
+				...(inner.messageContextInfo?.botMetadata || {}),
+				...(options.aiPersonaId ? { personaId: options.aiPersonaId } : {})
+			}
 		}
 	}
 

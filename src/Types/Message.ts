@@ -156,6 +156,32 @@ export type EventMessageOptions = {
 	messageSecret?: Uint8Array<ArrayBufferLike>
 }
 
+/** vlyzer-fork: options for a sticker pack message */
+export type StickerPackOptions = {
+	/** pack display name */
+	name: string
+	/** pack publisher */
+	publisher: string
+	/** stable pack id; a random one is generated when omitted */
+	packId?: string
+	caption?: string
+	/** at least one sticker (webp media); the first sticker also provides the pack media payload */
+	stickers: {
+		media: WAMediaUpload
+		fileName?: string
+		emojis?: string[]
+		isAnimated?: boolean
+		accessibilityLabel?: string
+	}[]
+}
+
+/** vlyzer-fork: options for a payment invite message */
+export type PaymentInviteOptions = {
+	serviceType: 'FBPAY' | 'NOVI' | 'UPI'
+	/** expiry as unix seconds */
+	expiryTimestamp?: number
+}
+
 /** vlyzer-fork: options for an interactive (native flow) message */
 export type InteractiveMessageOptions = {
 	/** header title */
@@ -292,6 +318,12 @@ export type AnyRegularMessageContent = (
 			requestPayment: RequestPaymentOptions
 	  }
 	| {
+			stickerPack: StickerPackOptions
+	  }
+	| {
+			paymentInvite: PaymentInviteOptions
+	  }
+	| {
 			contacts: {
 				displayName?: string
 				contacts: proto.Message.IContactMessage[]
@@ -389,6 +421,10 @@ export type MiscMessageGenerationOptions = MinimalRelayOptions & {
 	broadcast?: boolean
 	/** vlyzer-fork: mention every participant of the group in this message */
 	mentionAll?: boolean
+	/** vlyzer-fork: mark the message with bot (AI) metadata, like Meta AI messages carry */
+	ai?: boolean
+	/** vlyzer-fork: optional persona id placed in the bot metadata when ai is set */
+	aiPersonaId?: string
 }
 export type MessageGenerationOptionsFromContent = MiscMessageGenerationOptions & {
 	userJid: string
