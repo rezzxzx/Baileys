@@ -1,64 +1,80 @@
-<h1><img alt="Baileys logo" src="https://raw.githubusercontent.com/WhiskeySockets/Baileys/refs/heads/master/Media/logo.png" height="75"/></h1>
+# @vlyzer/baileys
 
+Vlyzer's own fork of [WhiskeySockets/Baileys](https://github.com/WhiskeySockets/Baileys) — the WhatsApp Web API library, extended with the features the Vlyzer bot actually needs. This is **not** the upstream package: everything below the line is added or fixed on top of upstream master (post-`7.0.0-rc14`).
 
-> [!CAUTION]
-> NOTICE OF BREAKING CHANGE.
->
-> As of 7.0.0, multiple breaking changes were introduced into the library.
->
-> Please check out https://whiskey.so/migrate-latest for more information.
+Current version: **7.0.0-vlyzer.4** · WA Web version: **2.3000.1056179073** · License: MIT
 
-Baileys is a WebSockets-based TypeScript library for interacting with the WhatsApp Web API.
+## Install
 
-Join the WhiskeySockets community via the link: https://whiskey.so/discord
+Not published on npm — install straight from this repo:
 
-# Usage & Guide
+```bash
+npm install github:rezzxzx/Baileys#main
+```
 
-> [!IMPORTANT]
-> The new guide is a work in progress. Expect missing pages/content. [Report missing or incorrect content.](https://github.com/WhiskeySockets/baileys.wiki-site/issues/new)
->
-> **You can still access the old guide here:** [README.md](https://github.com/WhiskeySockets/Baileys/tree/master/README.md), or the [NPM homepage](https://npmjs.com/package/baileys).
+```ts
+import makeWASocket from '@vlyzer/baileys'
 
-The new guide is posted at https://baileys.wiki .
+const sock = makeWASocket({ /* your usual baileys options */ })
+```
 
-# Get Support
+Everything from upstream Baileys works exactly as documented at [baileys.wiki](https://baileys.wiki). The additions below are purely additive — no upstream API was removed or changed in spirit.
 
-If you'd like business to enterprise-level support from Rajeh, the current maintainer of Baileys, you can book a video chat. Book a 1 hour time slot by contacting him on Discord or pre-ordering [here](https://purpshell.dev/book). The earlier you pre-order the better, as his time slots usually fill up very quickly. He offers immense value per hour and will answer all your questions before the time runs out.
+## What's different from upstream
 
-If you are a business, we encourage you to contribute back to the high development costs of the project and to feed the maintainers who dump tens of hours a week on this. You can do so by booking meetings or sponsoring below. All support, even in bona fide / contribution hours, is welcome by businesses of all sizes. This is not condoning or endorsing businesses to use the library. See the Disclaimer below.
+### Sending
 
-# Sponsor
+- **`mentionAll`** — mention every group member in one call, no participant list needed:
+  ```ts
+  await sock.sendMessage(groupJid, { text: 'tag all' }, { mentionAll: true })
+  ```
+- **Interactive messages** (native-flow buttons):
+  ```ts
+  await sock.sendMessage(jid, {
+    interactive: {
+      header: 'Choose one',
+      body: 'Pick an option below',
+      footer: 'Vlyzer',
+      buttons: [{ name: 'quick_reply', buttonParamsJson: JSON.stringify({ display_text: 'Yes', id: 'yes' }) }]
+    }
+  })
+  ```
+- **Rich responses** — text, code blocks and tables in one message:
+  ```ts
+  await sock.sendMessage(jid, {
+    richResponse: { submessages: [
+      { type: 'text', text: 'Result:' },
+      { type: 'code', code: 'console.log(1)', language: 'javascript' },
+      { type: 'table', header: ['Col'], rows: [['a', 'b']] }
+    ] }
+  })
+  ```
+- **Payments** — `requestPayment` (amount in major units, e.g. `25000` = Rp25.000) and `paymentInvite` (FBPAY / NOVI / UPI).
+- **Sticker packs** — send a whole pack with `{ stickerPack: { name, publisher, stickers: [...] } }`.
+- **`ai` flag** — attach Meta AI persona metadata to a message: `sendMessage(jid, { text: 'hi' }, { ai: true })`.
+- **Albums** — supported upstream and verified here (`{ album: {...} }` + per-item `albumParentKey`).
 
-If you'd like to financially support this project, you can do so by supporting the current maintainer [here](https://purpshell.dev/sponsor).
+### Receiving
 
-# Disclaimer
-> [!CAUTION]
-> This project is not affiliated, associated, authorized, endorsed by, or in any way officially connected with WhatsApp or any of its subsidiaries or its affiliates.
-> The official WhatsApp website can be found at whatsapp.com. "WhatsApp" as well as related names, marks, emblems and images are registered trademarks of their respective owners.
->
-> The maintainers of Baileys do not in any way condone the use of this application in practices that violate the Terms of Service of WhatsApp. The maintainers of this application call upon the personal responsibility of its users to use this application in a fair way, as it is intended to be used.
-> Use at your own discretion. Do not spam people with this. We discourage any stalkerware, bulk or automated messaging usage.
+- **Meta AI replies just work.** Messages from Meta AI arrive as `<enc type="msmsg">`, which upstream ignores. This fork decrypts them (two-pass HKDF over the outgoing message's `messageSecret` → AES-256-GCM) and delivers them as normal messages. Secrets are registered at send time and recovered from your message store after a restart — nothing to configure.
+- **Newsletter quoting** — quoted context is attached for newsletter JIDs instead of being dropped.
 
-# License
-Copyright (c) 2026 Rajeh Taher/WhiskeySockets
+### Utilities
 
-Licensed under the MIT License:
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+- **`makeInMemoryStore`** — the classic in-memory store (chats / contacts / messages / groups, JSON persist via `readFromFile` / `writeToFile`), reimplemented dependency-free:
+  ```ts
+  import { makeInMemoryStore } from '@vlyzer/baileys'
+  const store = makeInMemoryStore({})
+  store.bind(sock.ev)
+  ```
+- **Listener crash guard** — listeners registered through `sock.ev` are wrapped so a throwing/rejecting async handler is logged instead of crashing the process with an unhandled rejection.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+### Inherited from upstream (already there, verified)
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Selective history sync (`shouldSyncHistoryMessage`, `syncFullHistory`), `getPNForLID` / `getLIDForPN`, custom pairing codes, USync username + bot-profile protocols, MEX GraphQL queries (`executeWMexQuery`), and the `a.whatsapp.net` media-host fix behind the "newsletter media" issue.
 
-Thus, the maintainers of the project can't be held liable for any potential misuse of this project.
+Full per-batch changelog: [VLYZER_FORK.md](./VLYZER_FORK.md)
+
+## Credits
+
+Built on [WhiskeySockets/Baileys](https://github.com/WhiskeySockets/Baileys) (MIT). This fork is an independent project, not affiliated with WhatsApp LLC or Meta.
